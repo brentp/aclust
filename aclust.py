@@ -100,12 +100,10 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     """
 
     objs = iter(objs)
-    last_obj = objs.next()
     # accumulate clusters here.
-    clusters = [[last_obj]]
+    clusters = [[objs.next()]]
+
     for obj in objs:
-        #assert obj.distance(last_obj) >= 0,
-        #        ("input must be sorted by "position")
 
         # clean out our list of clusters
         while len(clusters) > 0 and obj.distance(clusters[0][-1]) > max_dist:
