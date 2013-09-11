@@ -3,6 +3,8 @@ Streaming agglomerative clustering with custom distance and correlation
 functions.
 """
 
+__version__ = "0.1.0"
+
 def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     r"""
     objs: must be sorted and could (should) be a lazy iterable.
@@ -130,8 +132,10 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     for clust in (c for c in clusters if len(c) >= min_clust_size):
         yield clust
 
+def test():
+    import doctest
+    return doctest.testmod(__import__(__name__))
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod()
-
+    print doctest.testmod()
