@@ -5,35 +5,37 @@ functions.
 
 def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     r"""
-    objs be sorted and could (should) be a lazy iterable.
-    each obj in objs must have this interface (I know, I know):
-        + obj.distance(other_obj) which returns:
-          - positive integer if obj's position > other_obj's position
-          - negative integer if obj's position < other_obj's position
-          - 0 if they have the same position
+    objs: must be sorted and could (should) be a lazy iterable.
+          each obj in objs must have this interface (I know, I know):
+          + obj.distance(other_obj) which returns an integer
+          + obj.is_correlated(other_obj) which returns a bool
 
-        + obj.is_correlated(other_obj) which returns a bool
+          groups of objs, such as those from distinct chromosomes from genomic
+          data should be separated before sending to this function. (or the
+          distance function could return a value > max_dist when chromosomes
+          are not equal
 
-    groups of objs, such as those from distinct chromosomes from genomic
-    data should be separated before sending to this function.
+    max_dist: maximum distance at which to cluster 2 objs (assuming they
+              are correlated.
 
-    max_skip of 1 allows to skip one cluster (which is not correlated with)
-    the current object and check the next (more distant) cluster.
+    min_clust_size: only yield clusters of at least this size.
+
+    max_skip: 1 allows to skip one cluster which is not correlated with
+              the current object and check the next (more distant) cluster.
 
     min_clust_size: only yield clusters that have at least this many
                     members.
 
-    corr_with is likely either any or all, but can be any function that
-    takes an iterable of booleans and returns a boolean
-    any would mean that in order for an object to be added to a cluster,
-        it must only be correlated with one of them
-    all would mean that it must be correlated with all of them.
-
-    likely any new obj that is correlated with one of the members of a
-    given cluster will be somehow correlated with all of them, but this
-    will depend on cutoffs.
+    corr_with: likely either `any` or `all`, but can be any function that
+               takes an iterable of booleans and returns a boolean indicating
+               whether an obj should be added to a cluster. `any` would mean
+               that it must only be correlated with one of them (single-
+               linkage) `all` would mean that it must be correlated with all of
+               them (complete-linkage)
 
     Examples:
+    First, the class that implements o.distance(other) and
+    o.is_correlated(other)
 
     >>> import numpy as np
     >>> class Feature(object):
