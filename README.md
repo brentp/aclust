@@ -51,4 +51,9 @@ Uses
    use this to reduce the number of tests (of association) from 1 test per CpG,
    to 1 test per correlated unit.
 
+INSTALL
+=======
 
+`aclust` is available on pypi, as such it can be installed with:
+
+    pip install aclust
