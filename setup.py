@@ -21,7 +21,7 @@ setup(name='aclust',
       long_description=open('README.md').read(),
       platforms='any',
       classifiers=[
-        'Topic :: Scientific/Engineering :: Bio-Informatics'
+        'Topic :: Scientific/Engineering :: Bio-Informatics',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.2',

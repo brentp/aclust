@@ -1,0 +1,3 @@
+include aclust.py
+include setup.py
+include README.md
