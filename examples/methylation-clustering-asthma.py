@@ -21,8 +21,6 @@ from statsmodels.genmod.families import Gaussian, Binomial
 import pandas as pd
 
 
-def ilogit(a):
-    return 1 / (1 + np.exp(-a))
 
 def gee_cluster(clust_iter, clin_df, model_str, coef, id_col,
         varstruct=Exchangeable(), family=Gaussian()):
@@ -80,11 +78,15 @@ if __name__ == "__main__":
     import scipy.stats as ss
     import numpy as np
 
+    # convert M-values to Beta's then use logistic regression.
+    def ilogit(a):
+        return 1 / (1 + np.exp(-a))
+
     class Feature(object):
         __slots__ = "chrom position values spos".split()
 
         def __init__(self, chrom, pos, values):
-            self.chrom, self.position, self.values = chrom, pos, np.array(values)
+            self.chrom, self.position, self.values = chrom, pos, ilogit(np.array(values))
             self.spos = "%s:%i" % (chrom, pos)
 
         def distance(self, other):
@@ -113,5 +115,5 @@ if __name__ == "__main__":
                         min_clust_size=3)
 
     gee_cluster(clust_iter, df, formula, "asthma", "StudyID",
-                varstruct=Exchangeable())
+                varstruct=Exchangeable(), family=Binomial())
 
