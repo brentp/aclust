@@ -3,22 +3,56 @@ Streaming agglomerative clustering with custom distance and correlation
 functions.
 """
 
+__version__ = "0.1.1"
+
+def _get_linkage_function(linkage):
+
+    if linkage == 'single':
+        return any
+
+    if linkage == 'complete':
+        return all
+
+    if isinstance(linkage, float):
+        assert 0 < linkage <= 1
+        if linkage == 1:
+            return all
+
+        def _linkage(bools, p=linkage):
+            v = list(bools)
+            return (sum(v) / float(len(v))) >= p
+        return _linkage
+
+    if isintance(linkage, int):
+        assert linkage >= 1
+        if linkage == 1:
+            return any
+
+        def _linkage(bools, n=linkage):
+            v = list(bools)
+            return sum(v) >= min(len(v), n)
+        return _linkage
+    1/0
+
 def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     r"""
-    objs be sorted and could (should) be a lazy iterable.
-    each obj in objs must have this interface (I know, I know):
-        + obj.distance(other_obj) which returns:
-          - positive integer if obj's position > other_obj's position
-          - negative integer if obj's position < other_obj's position
-          - 0 if they have the same position
+    objs: must be sorted and could (should) be a lazy iterable.
+          each obj in objs must have this interface (I know, I know):
+          + obj.distance(other_obj) which returns an integer
+          + obj.is_correlated(other_obj) which returns a bool
 
-        + obj.is_correlated(other_obj) which returns a bool
+          groups of objs, such as those from distinct chromosomes from genomic
+          data should be separated before sending to this function. (or the
+          distance function could return a value > max_dist when chromosomes
+          are not equal
 
-    groups of objs, such as those from distinct chromosomes from genomic
-    data should be separated before sending to this function.
+    max_dist: maximum distance at which to cluster 2 objs (assuming they
+              are correlated.
 
-    max_skip of 1 allows to skip one cluster (which is not correlated with)
-    the current object and check the next (more distant) cluster.
+    min_clust_size: only yield clusters of at least this size.
+
+    max_skip: 1 allows to skip one cluster which is not correlated with
+              the current object and check the next (more distant) cluster.
 
     min_clust_size: only yield clusters that have at least this many
                     members.
@@ -35,11 +69,9 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
                <float>: it must be associate with at least this portion of
                         objects in the cluster
 
-    likely any new obj that is correlated with one of the members of a
-    given cluster will be somehow correlated with all of them, but this
-    will depend on cutoffs.
-
     Examples:
+    First, the class that implements o.distance(other) and
+    o.is_correlated(other)
 
     >>> import numpy as np
     >>> class Feature(object):
@@ -101,32 +133,13 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
     """
 
-    if linkage == 'single': linkage = any
-    elif linkage == 'complete': linkage = all
-    elif isinstance(linkage, float):
-        assert 0 < linkage <= 1)
-        if linkage == 1: linkage = all
-        else:
-            def _linkage(bools, p=linkage):
-                v = list(bools)
-                return (sum(v) / float(len(v))) >= p
-            linkage=_linkage
-    elif isintance(linkage, int):
-        assert linkage >= 1
-        if linkage == 1: linkage = any
-        else:
-            def _linkage(bools, n=linkage):
-                v = list(bools)
-                return sum(v) >= min(len(v), n)
-            linkage = _linkage
+    linkage = _get_linkage_function(linkage)
 
     objs = iter(objs)
-    last_obj = objs.next()
     # accumulate clusters here.
-    clusters = [[last_obj]]
+    clusters = [[objs.next()]]
+
     for obj in objs:
-        #assert obj.distance(last_obj) >= 0,
-        #        ("input must be sorted by "position")
 
         # clean out our list of clusters
         while len(clusters) > 0 and obj.distance(clusters[0][-1]) > max_dist:
@@ -153,8 +166,10 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     for clust in (c for c in clusters if len(c) >= min_clust_size):
         yield clust
 
+def test():
+    import doctest
+    return doctest.testmod(__import__(__name__))
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod()
-
+    print doctest.testmod()
