@@ -40,7 +40,7 @@ determine how much data is kept in memory.
 See the function docstring for examples and options. The function signature is:
 
    aclust(object\_stream, max\_dist, min\_clust\_size=0,
-          max\_skip=1, corr\_with=any)
+          max\_skip=1, linkage='single')
 
 It yields clusters (lists) of objects from the input object stream.
 

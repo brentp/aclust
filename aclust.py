@@ -3,7 +3,7 @@ Streaming agglomerative clustering with custom distance and correlation
 functions.
 """
 
-def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
+def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     r"""
     objs be sorted and could (should) be a lazy iterable.
     each obj in objs must have this interface (I know, I know):
@@ -23,11 +23,17 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     min_clust_size: only yield clusters that have at least this many
                     members.
 
-    corr_with is likely either any or all, but can be any function that
-    takes an iterable of booleans and returns a boolean
-    any would mean that in order for an object to be added to a cluster,
-        it must only be correlated with one of them
-    all would mean that it must be correlated with all of them.
+    linkage: defines requirements for a new object to be added to an existing
+             cluster. One of:
+               'single': meaning an object is added to a cluster if it
+                         correlated with any object in that cluster.
+               'complete': meaning it must be correlated will all objects in
+                           the cluster
+               <integer>: it must be associated with at least this many objects
+                          in the cluster (the min of this value and the number
+                          of objects.)
+               <float>: it must be associate with at least this portion of
+                        objects in the cluster
 
     likely any new obj that is correlated with one of the members of a
     given cluster will be somehow correlated with all of them, but this
@@ -95,6 +101,25 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
     """
 
+    if linkage == 'single': linkage = any
+    elif linkage == 'complete': linkage = all
+    elif isinstance(linkage, float):
+        assert 0 < linkage <= 1)
+        if linkage == 1: linkage = all
+        else:
+            def _linkage(bools, p=linkage):
+                v = list(bools)
+                return (sum(v) / float(len(v))) >= p
+            linkage=_linkage
+    elif isintance(linkage, int):
+        assert linkage >= 1
+        if linkage == 1: linkage = any
+        else:
+            def _linkage(bools, n=linkage):
+                v = list(bools)
+                return sum(v) >= min(len(v), n)
+            linkage = _linkage
+
     objs = iter(objs)
     last_obj = objs.next()
     # accumulate clusters here.
@@ -118,7 +143,7 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, corr_with=any):
         for clust in clusters[::-1]:
             inear = (i for i, r in enumerate(clust) if obj.distance(r) <=
                     max_dist)
-            if corr_with(obj.is_correlated(clust[i]) for i in inear):
+            if linkage(obj.is_correlated(clust[i]) for i in inear):
                 clust.append(obj)
                 break
         else:
