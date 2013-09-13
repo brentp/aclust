@@ -6,6 +6,31 @@ functions.
 __version__ = "0.1.1"
 
 def _get_linkage_function(linkage):
+    """
+    >>> "f_linkage" in str(_get_linkage_function(0.5))
+    True
+    >>> "i_linkage" in str(_get_linkage_function(2))
+    True
+    >>> any is _get_linkage_function('single')
+    True
+    >>> all is _get_linkage_function('complete')
+    True
+
+    >>> ff = _get_linkage_function(0.5)
+    >>> ff([True, False, False])
+    False
+    >>> ff([True, True, False])
+    True
+    
+    >>> fi = _get_linkage_function(3)
+    >>> fi([True, False, False])
+    False
+    >>> fi([True, True, False])
+    False
+    >>> fi([True, True, True]) and fi([True] * 10)
+    True
+
+    """
 
     if linkage == 'single':
         return any
@@ -18,20 +43,20 @@ def _get_linkage_function(linkage):
         if linkage == 1:
             return all
 
-        def _linkage(bools, p=linkage):
+        def f_linkage(bools, p=linkage):
             v = list(bools)
             return (sum(v) / float(len(v))) >= p
-        return _linkage
+        return f_linkage
 
-    if isintance(linkage, int):
+    if isinstance(linkage, int):
         assert linkage >= 1
         if linkage == 1:
             return any
 
-        def _linkage(bools, n=linkage):
+        def i_linkage(bools, n=linkage):
             v = list(bools)
             return sum(v) >= min(len(v), n)
-        return _linkage
+        return i_linkage
     1/0
 
 def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
