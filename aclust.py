@@ -59,7 +59,7 @@ def _get_linkage_function(linkage):
         return i_linkage
     1/0
 
-def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
+def aclust(objs, max_dist, max_skip=1, linkage='single'):
     r"""
     objs: must be sorted and could (should) be a lazy iterable.
           each obj in objs must have this interface (I know, I know):
@@ -74,13 +74,8 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     max_dist: maximum distance at which to cluster 2 objs (assuming they
               are correlated.
 
-    min_clust_size: only yield clusters of at least this size.
-
     max_skip: 1 allows to skip one cluster which is not correlated with
               the current object and check the next (more distant) cluster.
-
-    min_clust_size: only yield clusters that have at least this many
-                    members.
 
     linkage: defines requirements for a new object to be added to an existing
              cluster. One of:
@@ -135,25 +130,20 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     [(2, [4, 3, 2, 1, 0])]
 
 
-    # only show bigger clusters
-    >>> for c in aclust(feats + [Feature(2, range(5)[::-1])], max_dist=1,
-    ...    min_clust_size=2):
-    ...    print c
-    [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
-
-
     # test skipping
     >>> for c in aclust([Feature(-1, range(5)[::-1])] + feats + \
     ...                 [Feature( 2, range(5)[::-1])],
-    ...                  max_dist=1, min_clust_size=2, max_skip=4):
-    ...     print c
+    ...                  max_dist=1, max_skip=4):
+    ...     if len(c) > 1:
+    ...         print c
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
 
     # with maximum dist set high as well...
     >>> for c in aclust([Feature(-1, range(5)[::-1])] + feats + \
     ...                 [Feature( 2, range(5)[::-1])],
-    ...                  max_dist=4, min_clust_size=2, max_skip=4):
-    ...     print c
+    ...                  max_dist=4, max_skip=4):
+    ...     if len(c) > 1:
+    ...         print c
     [(-1, [4, 3, 2, 1, 0]), (2, [4, 3, 2, 1, 0])]
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
     """
@@ -168,14 +158,10 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
 
         # clean out our list of clusters
         while len(clusters) > 0 and obj.distance(clusters[0][-1]) > max_dist:
-            c = clusters.pop(0)
-            if len(c) >= min_clust_size:
-                yield c
+            yield clusters.pop(0)
 
         while len(clusters) > max_skip:
-            c = clusters.pop(0)
-            if len(c) >= min_clust_size:
-                yield c
+            yield clusters.pop(0)
 
         # check against all clusters. closest first.
         for clust in clusters[::-1]:
@@ -188,7 +174,7 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
             # didn't get to any cluster. make a new one...
             clusters.append([obj])
 
-    for clust in (c for c in clusters if len(c) >= min_clust_size):
+    for clust in clusters:
         yield clust
 
 def test():

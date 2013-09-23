@@ -18,6 +18,8 @@ from statsmodels.genmod.generalized_estimating_equations import GEE
 from statsmodels.genmod.dependence_structures.varstruct import (Exchangeable,
         Independence, Autoregressive)
 from statsmodels.genmod.families import Gaussian, Binomial
+import statsmodels.api as sm
+Binomial = sm.families.Binomial
 import pandas as pd
 
 
@@ -31,7 +33,7 @@ def gee_cluster(clust_iter, clin_df, model_str, coef, id_col,
              clust_iter.
     """
 
-    print "#chrom\tstart\tend\tn_probes\tprobes\t{coef}.pvalue\t{coef}.tstat\t{coef}.coef"\
+    yield "#chrom\tstart\tend\tn_probes\tprobes\t{coef}.pvalue\t{coef}.tstat\t{coef}.coef"\
             .format(**locals())
 
 
@@ -51,7 +53,7 @@ def gee_cluster(clust_iter, clin_df, model_str, coef, id_col,
         """
         res = GEE.from_formula(model_str, df_rep,
                                family=family,
-                               time=locs,
+                               #time=locs,
                                groups=list(getattr(df_rep, id_col)),
                                varstruct=varstruct).fit()
 
@@ -60,14 +62,15 @@ def gee_cluster(clust_iter, clin_df, model_str, coef, id_col,
         assert len(idx) == 1, (
             "should have a single coefficent matching %s" % coef,
             res.model.exog_names)
+        pval = res.pvalues[idx[0]]
 
-        print "%s\t%i\t%i\t%i\t%s\t%.4g\t%.2f\t%.2f" % (
+        yield "%s\t%i\t%i\t%i\t%s\t%.4g\t%.2f\t%.2f" % (
             cluster[0].chrom,
             cluster[0].position,
             cluster[-1].position,
             len(cluster),
             ",".join(c.spos for c in cluster),
-            res.pvalues[idx[0]],
+            pval,
             res.tvalues[idx[0]],
             res.params[idx[0]])
 
@@ -79,8 +82,8 @@ if __name__ == "__main__":
     import numpy as np
 
     # convert M-values to Beta's then use logistic regression.
-    def ilogit(a):
-        return 1 / (1 + np.exp(-a))
+    def ilogit(a, base=2):
+        return 1 / (1 + base**-a)
 
     class Feature(object):
         __slots__ = "chrom position values spos".split()
@@ -95,7 +98,7 @@ if __name__ == "__main__":
 
         def is_correlated(self, other):
             rho, p = ss.spearmanr(self.values, other.values)
-            return rho > 0.6
+            return rho > 0.7
 
         def __repr__(self):
             return str((self.position, self.values))
@@ -111,9 +114,14 @@ if __name__ == "__main__":
 
     df = pd.read_table('/home/brentp/src/denver-bio/2013/icac-nasal-epithelium/data/meth.clin.txt')
     formula = "methylation ~ asthma + age + gender + race_white + race_hispanic + race_aa"
-    clust_iter = aclust(sorted(feature_gen()), max_dist=400, max_skip=2,
-                        min_clust_size=3)
+    clust_iter = (c for c in
+                    aclust(sorted(feature_gen()), max_dist=400, max_skip=2) if
+                    len(c) > 1)
 
-    gee_cluster(clust_iter, df, formula, "asthma", "StudyID",
+    clusters = gee_cluster(clust_iter, df, formula, "asthma", "StudyID",
                 varstruct=Exchangeable(), family=Binomial())
+    from cruzdb import Genome
+
+    g = Genome('sqlite:///hg19.db')
+    g.annotate((x.split("\t") for x in clusters), ('refGene', 'cpgIslandExt'), feature_strand=True)
 
