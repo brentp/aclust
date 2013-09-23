@@ -21,7 +21,7 @@ def _get_linkage_function(linkage):
     False
     >>> ff([True, True, False])
     True
-    
+
     >>> fi = _get_linkage_function(3)
     >>> fi([True, False, False])
     False
@@ -104,10 +104,10 @@ def aclust(objs, max_dist, min_clust_size=0, max_skip=1, linkage='single'):
     ...         self.position, self.values = pos, values
     ...     def distance(self, other):
     ...         return self.position - other.position
-    ... 
+    ...
     ...     def is_correlated(self, other):
     ...         return np.corrcoef(self.values, other.values)[0, 1] > 0.5
-    ... 
+    ...
     ...     def __repr__(self):
     ...         return str((self.position, self.values))
 
