@@ -29,7 +29,6 @@ def _get_linkage_function(linkage):
     False
     >>> fi([True, True, True]) and fi([True] * 10)
     True
-
     """
 
     if linkage == 'single':
@@ -45,6 +44,7 @@ def _get_linkage_function(linkage):
 
         def f_linkage(bools, p=linkage):
             v = list(bools)
+            if len(v) == 0: return False
             return (sum(v) / float(len(v))) >= p
         return f_linkage
 
