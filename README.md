@@ -40,9 +40,14 @@ determine how much data is kept in memory.
 See the function docstring for examples and options. The function signature is:
 
    aclust(object\_stream, max\_dist,
-          max\_skip=1, linkage='single')
+          max\_skip=1, linkage='single', multi\_member=False)
 
 It yields clusters (lists) of objects from the input object stream.
+
+`multi\_member` allows a feature to be a member of multiple clusters as long as
+it meets the distance and correlation constraints. The default is to only
+allow a feature to be added to the *nearest* cluster with which it is
+correlated.
 
 Uses
 ====

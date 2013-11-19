@@ -3,7 +3,7 @@ Streaming agglomerative clustering with custom distance and correlation
 functions.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 def _get_linkage_function(linkage):
     """
@@ -59,7 +59,7 @@ def _get_linkage_function(linkage):
         return i_linkage
     1/0
 
-def aclust(objs, max_dist, max_skip=1, linkage='single'):
+def aclust(objs, max_dist, max_skip=1, linkage='single', multi_member=False):
     r"""
     objs: must be sorted and could (should) be a lazy iterable.
           each obj in objs must have this interface (I know, I know):
@@ -88,6 +88,11 @@ def aclust(objs, max_dist, max_skip=1, linkage='single'):
                           of objects.)
                <float>: it must be associate with at least this portion of
                         objects in the cluster
+    multi_member: whether a feature be a member of multiple clusters.
+                  False: can only be a member of the nearest cluster to which
+                         it has a correlation
+                  True: can be a member of any cluster with which it is
+                        correlated (and within a given distance)
 
     Examples:
     First, the class that implements o.distance(other) and
@@ -164,13 +169,15 @@ def aclust(objs, max_dist, max_skip=1, linkage='single'):
             yield clusters.pop(0)
 
         # check against all clusters. closest first.
+        any_cluster = False
         for clust in clusters[::-1]:
             inear = (i for i, r in enumerate(clust) if obj.distance(r) <=
                     max_dist)
             if linkage(obj.is_correlated(clust[i]) for i in inear):
                 clust.append(obj)
-                break
-        else:
+                any_cluster = True
+                if not multi_member: break
+        if not any_cluster:
             # didn't get to any cluster. make a new one...
             clusters.append([obj])
 
