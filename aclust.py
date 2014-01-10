@@ -1,9 +1,12 @@
 """
 Streaming agglomerative clustering with custom distance and correlation
 functions.
+
+
 """
 
-__version__ = "0.1.2"
+__all__ = ['aclust', 'mclust']
+__version__ = "0.1.3"
 
 def _get_linkage_function(linkage):
     """
@@ -59,7 +62,7 @@ def _get_linkage_function(linkage):
         return i_linkage
     1/0
 
-def aclust(objs, max_dist, max_skip=1, linkage='single', multi_member=False):
+def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
     r"""
     objs: must be sorted and could (should) be a lazy iterable.
           each obj in objs must have this interface (I know, I know):
@@ -97,7 +100,6 @@ def aclust(objs, max_dist, max_skip=1, linkage='single', multi_member=False):
     Examples:
     First, the class that implements o.distance(other) and
     o.is_correlated(other)
-
     >>> import numpy as np
     >>> class Feature(object):
     ...     def __init__(self, pos, values):
@@ -165,7 +167,7 @@ def aclust(objs, max_dist, max_skip=1, linkage='single', multi_member=False):
         while len(clusters) > 0 and obj.distance(clusters[0][-1]) > max_dist:
             yield clusters.pop(0)
 
-        while len(clusters) > max_skip:
+        while len(clusters) > (max_skip + 1):
             yield clusters.pop(0)
 
         # check against all clusters. closest first.
@@ -183,6 +185,66 @@ def aclust(objs, max_dist, max_skip=1, linkage='single', multi_member=False):
 
     for clust in clusters:
         yield clust
+
+
+def mclust(objs, max_dist, linkage='single',
+                 merge_linkage=0.1, max_merge_dist=1000):
+    """
+    merge_clusters from aclust:
+    same as `aclust` but consecutive (adjacent within max_dist) clusters
+    with a linkage >= merge_linkage and any probes within max_merge_dist are
+    merged.
+
+    >>> import numpy as np
+    >>> class Feature(object):
+    ...     def __init__(self, pos, values):
+    ...         self.position, self.values = pos, values
+    ...     def distance(self, other):
+    ...         return self.position - other.position
+    ...
+    ...     def is_correlated(self, other):
+    ...         return np.corrcoef(self.values, other.values)[0, 1] > 0.5
+    ...
+    ...     def __repr__(self):
+    ...         return str((self.position, self.values))
+
+    >>> feats = [Feature(i * 2, range(5)) for i in range(3)]
+    >>> len(list(aclust(feats, max_dist=1)))
+    3
+
+    # get merged into a single cluster after
+    >>> len(list(mclust(feats, max_dist=1, max_merge_dist=2)))
+    1
+
+    """
+    cgen = aclust(objs, max_dist, max_skip=0, linkage=linkage,
+                  multi_member=False)
+    linkage = _get_linkage_function(linkage)
+
+    clust_a = cgen.next()
+
+    for clust_b in cgen:
+        # nothing close
+        if not any(a.distance(b) <= max_merge_dist for a in clust_a
+                                                   for b in clust_b):
+            yield clust_a
+            clust_a = clust_b
+            continue
+
+        # they are close, check correlations
+
+        counts = len(clust_a) * len(clust_b)
+        n_corr = sum(a.is_correlated(b) for a in clust_a for b in clust_b)
+
+        if n_corr / float(counts) >= merge_linkage:
+            # merge the 2 clusters and try the next one
+            clust_a.extend(clust_b)
+        else:
+            yield clust_a
+            clust_a = clust_b
+
+    yield clust_a
+
 
 def test():
     import doctest
