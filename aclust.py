@@ -33,7 +33,6 @@ def _get_linkage_function(linkage):
     >>> fi([True, True, True]) and fi([True] * 10)
     True
     """
-
     if linkage == 'single':
         return any
 
@@ -219,7 +218,8 @@ def mclust(objs, max_dist, linkage='single',
     """
     cgen = aclust(objs, max_dist, max_skip=0, linkage=linkage,
                   multi_member=False)
-    linkage = _get_linkage_function(linkage)
+    if merge_linkage == 'single': merge_linkage = 1
+
 
     clust_a = cgen.next()
 
@@ -236,7 +236,10 @@ def mclust(objs, max_dist, linkage='single',
         counts = len(clust_a) * len(clust_b)
         n_corr = sum(a.is_correlated(b) for a in clust_a for b in clust_b)
 
-        if n_corr / float(counts) >= merge_linkage:
+        # if they specified "complete' linkage for merge_linkage then they all
+        # have to match.
+        if n_corr / float(counts) >= (1 if merge_linkage == 'complete' else
+                merge_linkage):
             # merge the 2 clusters and try the next one
             clust_a.extend(clust_b)
         else:
