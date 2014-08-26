@@ -17,7 +17,7 @@ from aclust import aclust
 from statsmodels.api import GEE, GLM
 from statsmodels.genmod.dependence_structures import Exchangeable
 from statsmodels.genmod.families import Gaussian
-from toolshed import pmap
+import toolshed as ts
 import pandas as pd
 import numpy as np
 
@@ -78,7 +78,8 @@ def stouffer_liptak(pvals, sigma):
     Cp = qvals.sum() / np.sqrt(len(qvals))
     return norm.sf(Cp)
 
-def combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
+def _combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
+    """function called by z-score and liptak to get pvalues"""
     res = [GLM.from_formula(formula, covs, family=family).fit()
         for methylation in methylations]
 
@@ -92,18 +93,20 @@ def combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
 def liptak_cluster(formula, methylations, covs, coef, family=Gaussian()):
-    r = combine_cluster(formula, methylations, covs, coef, family=family)
+    r = _combine_cluster(formula, methylations, covs, coef, family=family)
     r['p'] = stouffer_liptak(r['p'], r['corr'])
     return r
 
 def zscore_cluster(formula, methylations, covs, coef, family=Gaussian()):
-    r = combine_cluster(formula, methylations, covs, coef, family=family)
+    r = _combine_cluster(formula, methylations, covs, coef, family=family)
     z, L = np.mean(norm.isf(r['p'])), len(r['p'])
     sz = 1.0 / L * np.sqrt(L + 2 * np.tril(r['corr'], k=-1).sum())
     r['p'] = norm.sf(z/sz)
     return r
 
 def wrapper(model_fn, model_str, cluster, clin_df, coef):
+    """wrap the user-defined functions to return everything we expect and
+    to call just GLM when there is a single probe."""
     if len(cluster) > 1:
         r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
     else:
@@ -117,7 +120,7 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
     return r
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
+    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
         yield r
 
 class Feature(object):
@@ -144,7 +147,6 @@ class Feature(object):
 
 if __name__ == "__main__":
 
-    import toolshed as ts
 
     def feature_gen(fname):
         for i, toks in enumerate(ts.reader(fname, header=False)):
