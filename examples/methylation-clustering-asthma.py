@@ -121,13 +121,27 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
     r['var'] = coef
     return r
 
-def get_coef(c, cutoff):
-    if c < 0: return min(0, c + cutoff)
-    return max(0, c - cutoff)
 
-def bump_cluster(model_str, methylations, covs, coef, cutoff=0.025, nsims=1000):
+# function for comparing with bump_cluster
+# takes the return value of _combine_cluster and returns a single numeric value
+def coef_sum(c, cutoff=0.025):
+    coefs = c['coef']
+    return sum(min(0, c + cutoff) if c < 0 else max(0, c - cutoff) for c in coefs)
+
+# function for comparing with bump_cluster
+def t_sum(c, cutoff=2):
+    coefs = c['t']
+    return sum(min(0, c + cutoff) if c < 0 else max(0, c - cutoff) for c in coefs)
+
+# function for comparing with bump_cluster
+def coef_t_prod(coefs, cutoff=2):
+    return np.median([coefs['t'][i] * coefs['coef'][i]
+                        for i in range(len(coefs['coef']))])
+
+def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
+        value_fn=coef_t_prod):
     orig = _combine_cluster(model_str, methylations, covs, coef)
-    obs_coef = sum(get_coef(c, cutoff) for c in orig['coef'])
+    obs_coef = value_fn(orig)
 
     reduced_residuals, reduced_fitted = [], []
 
@@ -152,7 +166,7 @@ def bump_cluster(model_str, methylations, covs, coef, cutoff=0.025, nsims=1000):
         assert fakem.shape == methylations.shape
 
         sim = _combine_cluster(model_str, fakem, covs, coef)
-        ccut = sum(get_coef(c, cutoff) for c in sim['coef'])
+        ccut = value_fn(sim)
         ngt += abs(ccut) > abs(obs_coef)
         # progressive monte-carlo.
         if ngt > 5: break
@@ -164,7 +178,7 @@ def bump_cluster(model_str, methylations, covs, coef, cutoff=0.025, nsims=1000):
 
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
+    for r in starmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
                     for cluster in clust_iter)):
         yield r
 
@@ -211,7 +225,7 @@ if __name__ == "__main__":
     formula = "methylation ~ asthma + age + gender"
 
     clusters = model_clusters(clust_iter, df, formula, "asthma",
-            model_fn=zscore_cluster)
+            model_fn=bump_cluster)
 
     for i, c in enumerate(clusters):
         print fmt.format(**c)
