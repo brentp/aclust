@@ -123,7 +123,8 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
     return r
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in starmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
+    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
+                    for cluster in clust_iter), n=3):
         yield r
 
 class Feature(object):
@@ -173,7 +174,7 @@ if __name__ == "__main__":
 
     for i, c in enumerate(clusters):
         print fmt.format(**c)
-        if i > 10: break
+        if i > 1000: break
 
     #from cruzdb import Genome
     #g = Genome('sqlite:///hg19.db')
