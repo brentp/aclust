@@ -15,6 +15,7 @@ a number of measurements equal to the number of probes in a given cluster.
 import sys
 from aclust import aclust
 import toolshed as ts
+from itertools import starmap
 
 import pandas as pd
 import numpy as np
@@ -53,18 +54,20 @@ def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
             't': res.tvalues[idx[0]],
             'coef': res.params[idx[0]]}
 
-def mixed_model_cluster(formula, methylation, covs, coef, family=Gaussian()):
+def mixed_model_cluster(formula, methylation, covs, coef):
     """TODO."""
-    1/0
+    covs['id'] = ['id_%i' % i for i in range(len(covs))]
     cov_rep = pd.concat((covs for i in range(len(methylation))))
     nr, nc = methylation.shape
     cov_rep['CpG'] = np.repeat(['CpG_%i' % i for i in range(methylation.shape[0])],
                         methylation.shape[1])
     cov_rep['methylation'] = np.concatenate(methylation)
+    #cov2 = cov_rep[['id', 'CpG', 'methylation', 'age', 'gender', 'asthma']].to_csv('/tmp/m.csv', index=False)
 
-    res = MixedLM.from_formula(formula, groups=cov_rep['id'], data=cov_rep, familly=family)
-    res.add_XXXXXXXXXXXXXXXXXXXXXX(cov_rep['CpG'])
-    res = res.fit()
+    res = MixedLM.from_formula(formula, groups='id', re_formula="id + CpG", data=cov_rep)
+
+    #res.set_random(cov_rep['CpG']) # TODO make them independent
+    res = res.fit(free=(np.ones(res.k_fe), np.eye(res.k_re)))
     idx = [i for i, par in enumerate(res.model.exog_names)
                        if par.startswith(coef)]
     return {'p': res.pvalues[idx[0]],
@@ -120,7 +123,7 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
     return r
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
+    for r in starmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
         yield r
 
 class Feature(object):
@@ -153,7 +156,7 @@ if __name__ == "__main__":
             chrom, pos = toks[0].split(":")
             yield Feature(chrom, int(pos), map(float, toks[1:]))
 
-    fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:4g}\t{t:.3f}\t{coef:.3f}\t{probes}\t{var}"
+    fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{probes}\t{var}"
     print ts.fmt2header(fmt)
 
     clust_iter = (c for c in aclust(feature_gen(sys.argv[1]),
@@ -163,9 +166,10 @@ if __name__ == "__main__":
     df = pd.read_table('meth.clin.txt')
     df['id'] = df['StudyID']
 
-    formula = "methylation ~ asthma + age + gender + race_white + race_hispanic + race_aa"
+    formula = "methylation ~ asthma + age + gender"
 
-    clusters = model_clusters(clust_iter, df, formula, "asthma", model_fn=zscore_cluster)
+    
+    clusters = model_clusters(clust_iter, df, formula, "asthma", model_fn=liptak_cluster)
 
     for i, c in enumerate(clusters):
         print fmt.format(**c)
