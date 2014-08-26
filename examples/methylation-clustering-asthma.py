@@ -14,16 +14,17 @@ a number of measurements equal to the number of probes in a given cluster.
 
 import sys
 from aclust import aclust
-from statsmodels.api import GEE, GLM
-from statsmodels.genmod.dependence_structures import Exchangeable
-from statsmodels.genmod.families import Gaussian
 import toolshed as ts
+
 import pandas as pd
 import numpy as np
-
 import scipy.stats as ss
+
 from scipy.stats import norm
 from numpy.linalg import cholesky as chol
+from statsmodels.api import GEE, GLM, MixedLM
+from statsmodels.genmod.dependence_structures import Exchangeable
+from statsmodels.genmod.families import Gaussian
 
 def one_cluster(formula, methylation, covs, coef, family=Gaussian()):
     """used when we have a "cluster" with 1 probe."""
@@ -53,7 +54,7 @@ def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
             'coef': res.params[idx[0]]}
 
 def mixed_model_cluster(formula, methylation, covs, coef, family=Gaussian()):
-    "TODO"
+    """TODO."""
     1/0
     cov_rep = pd.concat((covs for i in range(len(methylation))))
     nr, nc = methylation.shape
@@ -69,7 +70,6 @@ def mixed_model_cluster(formula, methylation, covs, coef, family=Gaussian()):
     return {'p': res.pvalues[idx[0]],
             't': res.tvalues[idx[0]],
             'coef': res.params[idx[0]]}
-
 
 def stouffer_liptak(pvals, sigma):
     qvals = norm.isf(pvals).reshape(len(pvals), 1)
@@ -147,7 +147,6 @@ class Feature(object):
 
 if __name__ == "__main__":
 
-
     def feature_gen(fname):
         for i, toks in enumerate(ts.reader(fname, header=False)):
             if i == 0: continue
@@ -168,11 +167,11 @@ if __name__ == "__main__":
 
     clusters = model_clusters(clust_iter, df, formula, "asthma", model_fn=zscore_cluster)
 
-    from cruzdb import Genome
     for i, c in enumerate(clusters):
         print fmt.format(**c)
         if i > 10: break
 
+    #from cruzdb import Genome
     #g = Genome('sqlite:///hg19.db')
     #g.annotate((x.split("\t") for x in clusters), ('refGene', 'cpgIslandExt'), feature_strand=True)
 
