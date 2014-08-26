@@ -13,7 +13,7 @@ a number of measurements equal to the number of probes in a given cluster.
 """
 
 import sys
-from aclust import aclust
+from aclust import mclust
 import toolshed as ts
 from itertools import starmap, izip
 
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{probes}\t{var}"
     print ts.fmt2header(fmt)
 
-    clust_iter = (c for c in aclust(feature_gen(sys.argv[1]),
+    clust_iter = (c for c in mclust(feature_gen(sys.argv[1]),
                                     max_dist=400, max_skip=2) if len(c) > 2)
 
 

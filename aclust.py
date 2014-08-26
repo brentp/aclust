@@ -6,7 +6,7 @@ functions.
 """
 
 __all__ = ['aclust', 'mclust']
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 def _get_linkage_function(linkage):
     """
@@ -186,7 +186,7 @@ def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
         yield clust
 
 
-def mclust(objs, max_dist, linkage='single',
+def mclust(objs, max_dist, max_skip=0, linkage='single',
                  merge_linkage=0.1, max_merge_dist=1000):
     """
     merge_clusters from aclust:
@@ -216,10 +216,12 @@ def mclust(objs, max_dist, linkage='single',
     1
 
     """
-    cgen = aclust(objs, max_dist, max_skip=0, linkage=linkage,
+    cgen = aclust(objs, max_dist, max_skip=max_skip, linkage=linkage,
                   multi_member=False)
-    if merge_linkage == 'single': merge_linkage = 1
-
+    if merge_linkage == 'single': merge_linkage = 1e-25
+    elif merge_linkage == 'complete': merge_linkage = 1 - 1e-25
+    else:
+        assert 0 < merge_linkage < 1, ("merge linkage must be between 0 and 1")
 
     clust_a = cgen.next()
 
@@ -238,8 +240,7 @@ def mclust(objs, max_dist, linkage='single',
 
         # if they specified "complete' linkage for merge_linkage then they all
         # have to match.
-        if n_corr / float(counts) >= (1 if merge_linkage == 'complete' else
-                merge_linkage):
+        if n_corr / float(counts) >= merge_linkage:
             # merge the 2 clusters and try the next one
             clust_a.extend(clust_b)
         else:
