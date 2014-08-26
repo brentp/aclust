@@ -134,7 +134,7 @@ def t_sum(c, cutoff=2):
     return sum(min(0, c + cutoff) if c < 0 else max(0, c - cutoff) for c in coefs)
 
 # function for comparing with bump_cluster
-def coef_t_prod(coefs, cutoff=2):
+def coef_t_prod(coefs):
     return np.median([coefs['t'][i] * coefs['coef'][i]
                         for i in range(len(coefs['coef']))])
 
@@ -168,7 +168,7 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
         sim = _combine_cluster(model_str, fakem, covs, coef)
         ccut = value_fn(sim)
         ngt += abs(ccut) > abs(obs_coef)
-        # progressive monte-carlo.
+        # sequential monte-carlo.
         if ngt > 5: break
 
     p = (1.0 + ngt) / (2.0 + isim)
