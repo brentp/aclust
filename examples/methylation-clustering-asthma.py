@@ -15,14 +15,16 @@ a number of measurements equal to the number of probes in a given cluster.
 import sys
 from aclust import aclust
 import toolshed as ts
-from itertools import starmap
+from itertools import starmap, izip
 
 import pandas as pd
 import numpy as np
 import scipy.stats as ss
+import patsy
 
 from scipy.stats import norm
 from numpy.linalg import cholesky as chol
+
 from statsmodels.api import GEE, GLM, MixedLM
 from statsmodels.genmod.dependence_structures import Exchangeable
 from statsmodels.genmod.families import Gaussian
@@ -32,11 +34,7 @@ def one_cluster(formula, methylation, covs, coef, family=Gaussian()):
     c = covs.copy()
     c['methylation'] = methylation
     res = GLM.from_formula(formula, data=c, family=family).fit()
-    idx = [i for i, par in enumerate(res.model.exog_names)
-                       if par.startswith(coef)]
-    return {'p': res.pvalues[idx[0]],
-            't': res.tvalues[idx[0]],
-            'coef': res.params[idx[0]]}
+    return get_ptc(res, coef)
 
 def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
         family=Gaussian()):
@@ -48,11 +46,7 @@ def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
 
     res = GEE.from_formula(formula, groups=cov_rep['id'], data=cov_rep, cov_struct=cov_struct,
             family=family).fit()
-    idx = [i for i, par in enumerate(res.model.exog_names)
-                       if par.startswith(coef)]
-    return {'p': res.pvalues[idx[0]],
-            't': res.tvalues[idx[0]],
-            'coef': res.params[idx[0]]}
+    return get_ptc(res, coef)
 
 def mixed_model_cluster(formula, methylation, covs, coef):
     """TODO."""
@@ -64,15 +58,18 @@ def mixed_model_cluster(formula, methylation, covs, coef):
     cov_rep['methylation'] = np.concatenate(methylation)
     #cov2 = cov_rep[['id', 'CpG', 'methylation', 'age', 'gender', 'asthma']].to_csv('/tmp/m.csv', index=False)
 
-    res = MixedLM.from_formula(formula, groups='id', re_formula="id + CpG", data=cov_rep)
+    res = MixedLM.from_formula(formula, groups='id', data=cov_rep).fit()
+    #res = res.fit() #free=(np.ones(res.k_fe), np.eye(res.k_re)))
+    return get_ptc(res, coef)
 
-    #res.set_random(cov_rep['CpG']) # TODO make them independent
-    res = res.fit(free=(np.ones(res.k_fe), np.eye(res.k_re)))
-    idx = [i for i, par in enumerate(res.model.exog_names)
+def get_ptc(fit, coef):
+    idx = [i for i, par in enumerate(fit.model.exog_names)
                        if par.startswith(coef)]
-    return {'p': res.pvalues[idx[0]],
-            't': res.tvalues[idx[0]],
-            'coef': res.params[idx[0]]}
+    assert len(idx) == 1, ("too many params like", coef)
+    return {'p': fit.pvalues[idx[0]],
+            't': fit.tvalues[idx[0]],
+            'coef': fit.params[idx[0]]}
+
 
 def stouffer_liptak(pvals, sigma):
     qvals = norm.isf(pvals).reshape(len(pvals), 1)
@@ -90,14 +87,15 @@ def _combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
                    if par.startswith(coef)][0]
     pvals = np.array([r.pvalues[idx] for r in res], dtype=np.float64)
     pvals[pvals == 1] = 1.0 - 9e-16
-    return dict(t=np.mean([r.tvalues[idx] for r in res]),
-                coef=np.mean([r.params[idx] for r in res]),
-                p=pvals, 
+    return dict(t=np.array([r.tvalues[idx] for r in res]),
+                coef=np.array([r.params[idx] for r in res]),
+                p=pvals,
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
 def liptak_cluster(formula, methylations, covs, coef, family=Gaussian()):
     r = _combine_cluster(formula, methylations, covs, coef, family=family)
     r['p'] = stouffer_liptak(r['p'], r['corr'])
+    r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
 
 def zscore_cluster(formula, methylations, covs, coef, family=Gaussian()):
@@ -105,6 +103,7 @@ def zscore_cluster(formula, methylations, covs, coef, family=Gaussian()):
     z, L = np.mean(norm.isf(r['p'])), len(r['p'])
     sz = 1.0 / L * np.sqrt(L + 2 * np.tril(r['corr'], k=-1).sum())
     r['p'] = norm.sf(z/sz)
+    r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
 
 def wrapper(model_fn, model_str, cluster, clin_df, coef):
@@ -122,9 +121,51 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
     r['var'] = coef
     return r
 
+def get_coef(c, cutoff):
+    if c < 0: return min(0, c + cutoff)
+    return max(0, c - cutoff)
+
+def bump_cluster(model_str, methylations, covs, coef, cutoff=0.025, nsims=1000):
+    orig = _combine_cluster(model_str, methylations, covs, coef)
+    obs_coef = sum(get_coef(c, cutoff) for c in orig['coef'])
+
+    reduced_residuals, reduced_fitted = [], []
+
+    # get the reduced residuals and models so we can shuffle
+    for i, methylation in enumerate(methylations):
+        y, X = patsy.dmatrices(model_str, covs, return_type='dataframe')
+        idxs = [par for par in X.columns if par.startswith(coef)]
+        assert len(idxs) == 1, ('too many coefficents like', coef)
+        X.pop(idxs[0])
+        fitr = GLM(y, X).fit()
+
+        reduced_residuals.append(np.array(fitr.resid_response))
+        reduced_fitted.append(np.array(fitr.fittedvalues))
+
+    ngt, idxs = 0, np.arange(len(methylations[0]))
+
+    for isim in range(nsims):
+        np.random.shuffle(idxs)
+
+        fakem = np.array([rf + rr[idxs] for rf, rr in izip(reduced_fitted,
+            reduced_residuals)])
+        assert fakem.shape == methylations.shape
+
+        sim = _combine_cluster(model_str, fakem, covs, coef)
+        ccut = sum(get_coef(c, cutoff) for c in sim['coef'])
+        ngt += abs(ccut) > abs(obs_coef)
+        # progressive monte-carlo.
+        if ngt > 5: break
+
+    p = (1.0 + ngt) / (2.0 + isim)
+    orig['p'] = p
+    orig['coef'], orig['t'] = orig['coef'].mean(), orig['t'].mean()
+    return orig
+
+
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
     for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
-                    for cluster in clust_iter), n=3):
+                    for cluster in clust_iter)):
         yield r
 
 class Feature(object):
@@ -169,12 +210,12 @@ if __name__ == "__main__":
 
     formula = "methylation ~ asthma + age + gender"
 
-    
-    clusters = model_clusters(clust_iter, df, formula, "asthma", model_fn=liptak_cluster)
+    clusters = model_clusters(clust_iter, df, formula, "asthma",
+            model_fn=zscore_cluster)
 
     for i, c in enumerate(clusters):
         print fmt.format(**c)
-        if i > 1000: break
+        if i > 10: break
 
     #from cruzdb import Genome
     #g = Genome('sqlite:///hg19.db')
