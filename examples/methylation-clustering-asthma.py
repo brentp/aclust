@@ -17,6 +17,7 @@ from aclust import aclust
 from statsmodels.api import GEE, GLM
 from statsmodels.genmod.dependence_structures import Exchangeable
 from statsmodels.genmod.families import Gaussian
+from toolshed import pmap
 import pandas as pd
 
 from scipy.stats import norm
@@ -62,18 +63,30 @@ def liptak_cluster(formula, methylations, covs, coef, family=Gaussian()):
                 coef=np.mean([r.params[idx] for r in res]),
                 p=stouffer_liptak(pvals, np.corrcoef(methylations)))
 
+def wrapper(model_fn, model_str, cluster, clin_df, coef):
+    r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
+    r['chrom'] = cluster[0].chrom
+    r['start'] = cluster[0].position
+    r['end'] = cluster[-1].position
+    r['n_probes'] = len(cluster)
+    r['probes'] = ",".join(c.spos for c in cluster)
+    return r
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
 
     yield "#chrom\tstart\tend\tn_probes\t{coef}.pvalue\t{coef}.tstat\t{coef}.coef\tprobes"\
             .format(**locals())
 
-    for cluster in clust_iter:
 
-        assert len(cluster[0].values)
+    for r in pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef) for cluster in clust_iter)):
+    #for cluster in clust_iter:
 
-        methylation = np.array([c.values for c in cluster])
-        r = model_fn(model_str, methylation, clin_df, coef)
+    #    assert len(cluster[0].values)
+
+    #    methylation = np.array([c.values for c in cluster])
+    #    r = model_fn(model_str, methylation, clin_df, coef)
+        yield r
+        continue
         yield "%s\t%i\t%i\t%i\t%.4g\t%.2f\t%.2f\t%s" % (
             cluster[0].chrom,
             cluster[0].position,
@@ -130,7 +143,7 @@ if __name__ == "__main__":
     from cruzdb import Genome
     for i, c in enumerate(clusters):
         print c
-        if i > 10: break
+        if i > 200: break
 
     #g = Genome('sqlite:///hg19.db')
     #g.annotate((x.split("\t") for x in clusters), ('refGene', 'cpgIslandExt'), feature_strand=True)
