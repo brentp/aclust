@@ -25,15 +25,16 @@ import patsy
 from scipy.stats import norm
 from numpy.linalg import cholesky as chol
 
-from statsmodels.api import GEE, GLM, MixedLM
+# TODO: evaluate GLS vs OLS
+from statsmodels.api import GEE, GLM, MixedLM, RLM, GLS
 from statsmodels.genmod.dependence_structures import Exchangeable
 from statsmodels.genmod.families import Gaussian
 
-def one_cluster(formula, methylation, covs, coef, family=Gaussian()):
+def one_cluster(formula, methylation, covs, coef, robust=True):
     """used when we have a "cluster" with 1 probe."""
     c = covs.copy()
     c['methylation'] = methylation
-    res = GLM.from_formula(formula, data=c, family=family).fit()
+    res = (RLM if robust else GLS).from_formula(formula, data=c).fit()
     return get_ptc(res, coef)
 
 def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
@@ -44,8 +45,7 @@ def gee_cluster(formula, methylation, covs, coef, cov_struct=Exchangeable(),
                         methylation.shape[1])
     cov_rep['methylation'] = np.concatenate(methylation)
 
-    res = GEE.from_formula(formula, groups=cov_rep['id'], data=cov_rep, cov_struct=cov_struct,
-            family=family).fit()
+    res = GEE.from_formula(formula, groups=cov_rep['id'], data=cov_rep, cov_struct=cov_struct).fit()
     return get_ptc(res, coef)
 
 def mixed_model_cluster(formula, methylation, covs, coef):
@@ -78,9 +78,9 @@ def stouffer_liptak(pvals, sigma):
     Cp = qvals.sum() / np.sqrt(len(qvals))
     return norm.sf(Cp)
 
-def _combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
+def _combine_cluster(formula, methylations, covs, coef, robust=False):
     """function called by z-score and liptak to get pvalues"""
-    res = [GLM.from_formula(formula, covs, family=family).fit()
+    res = [(RLM if robust else GLS).from_formula(formula, covs).fit()
         for methylation in methylations]
 
     idx = [i for i, par in enumerate(res[0].model.exog_names)
@@ -92,8 +92,8 @@ def _combine_cluster(formula, methylations, covs, coef, family=Gaussian()):
                 p=pvals,
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
-def liptak_cluster(formula, methylations, covs, coef, family=Gaussian()):
-    r = _combine_cluster(formula, methylations, covs, coef, family=family)
+def liptak_cluster(formula, methylations, covs, coef, robust=True):
+    r = _combine_cluster(formula, methylations, covs, coef, robust=robust)
     r['p'] = stouffer_liptak(r['p'], r['corr'])
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
@@ -139,8 +139,8 @@ def coef_t_prod(coefs):
                         for i in range(len(coefs['coef']))])
 
 def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
-        value_fn=coef_t_prod):
-    orig = _combine_cluster(model_str, methylations, covs, coef)
+        value_fn=coef_sum, robust=False):
+    orig = _combine_cluster(model_str, methylations, covs, coef, robust=robust)
     obs_coef = value_fn(orig)
 
     reduced_residuals, reduced_fitted = [], []
@@ -151,9 +151,9 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
         idxs = [par for par in X.columns if par.startswith(coef)]
         assert len(idxs) == 1, ('too many coefficents like', coef)
         X.pop(idxs[0])
-        fitr = GLM(y, X).fit()
+        fitr = (RLM if robust else GLS)(y, X).fit()
 
-        reduced_residuals.append(np.array(fitr.resid_response))
+        reduced_residuals.append(np.array(fitr.resid))
         reduced_fitted.append(np.array(fitr.fittedvalues))
 
     ngt, idxs = 0, np.arange(len(methylations[0]))
@@ -165,7 +165,7 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
             reduced_residuals)])
         assert fakem.shape == methylations.shape
 
-        sim = _combine_cluster(model_str, fakem, covs, coef)
+        sim = _combine_cluster(model_str, fakem, covs, coef, robust=robust)
         ccut = value_fn(sim)
         ngt += abs(ccut) > abs(obs_coef)
         # sequential monte-carlo.
@@ -212,7 +212,7 @@ if __name__ == "__main__":
             chrom, pos = toks[0].split(":")
             yield Feature(chrom, int(pos), map(float, toks[1:]))
 
-    fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{probes}\t{var}"
+    fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{var}"
     print ts.fmt2header(fmt)
 
     clust_iter = (c for c in mclust(feature_gen(sys.argv[1]),
