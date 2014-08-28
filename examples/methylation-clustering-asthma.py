@@ -26,7 +26,7 @@ from scipy.stats import norm
 from numpy.linalg import cholesky as chol
 
 # TODO: evaluate GLS vs OLS
-from statsmodels.api import GEE, GLM, MixedLM, RLM, GLS
+from statsmodels.api import GEE, GLM, MixedLM, RLM, GLS, OLS
 from statsmodels.genmod.dependence_structures import Exchangeable
 from statsmodels.genmod.families import Gaussian
 
@@ -78,7 +78,7 @@ def stouffer_liptak(pvals, sigma):
     Cp = qvals.sum() / np.sqrt(len(qvals))
     return norm.sf(Cp)
 
-def _combine_cluster(formula, methylations, covs, coef, robust=False):
+def _combine_cluster(formula, methylations, covs, coef, robust=True):
     """function called by z-score and liptak to get pvalues"""
     res = [(RLM if robust else GLS).from_formula(formula, covs).fit()
         for methylation in methylations]
@@ -92,14 +92,14 @@ def _combine_cluster(formula, methylations, covs, coef, robust=False):
                 p=pvals,
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
-def liptak_cluster(formula, methylations, covs, coef, robust=True):
+def liptak_cluster(formula, methylations, covs, coef, robust=False):
     r = _combine_cluster(formula, methylations, covs, coef, robust=robust)
     r['p'] = stouffer_liptak(r['p'], r['corr'])
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
 
-def zscore_cluster(formula, methylations, covs, coef, family=Gaussian()):
-    r = _combine_cluster(formula, methylations, covs, coef, family=family)
+def zscore_cluster(formula, methylations, covs, coef):
+    r = _combine_cluster(formula, methylations, covs, coef)
     z, L = np.mean(norm.isf(r['p'])), len(r['p'])
     sz = 1.0 / L * np.sqrt(L + 2 * np.tril(r['corr'], k=-1).sum())
     r['p'] = norm.sf(z/sz)
@@ -108,7 +108,7 @@ def zscore_cluster(formula, methylations, covs, coef, family=Gaussian()):
 
 def wrapper(model_fn, model_str, cluster, clin_df, coef):
     """wrap the user-defined functions to return everything we expect and
-    to call just GLM when there is a single probe."""
+    to call just GLS when there is a single probe."""
     if len(cluster) > 1:
         r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
     else:
@@ -182,11 +182,12 @@ def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
                     for cluster in clust_iter)):
         yield r
 
+
 class Feature(object):
     __slots__ = "chrom position values spos".split()
 
     def __init__(self, chrom, pos, values):
-        self.chrom, self.position, self.values = chrom, pos, values
+        self.chrom, self.position, self.values = chrom, pos, np.array(values)
         self.spos = "%s:%i" % (chrom, pos)
 
     def distance(self, other):
@@ -203,6 +204,33 @@ class Feature(object):
     def __cmp__(self, other):
         return cmp(self.chrom, other.chrom) or cmp(self.position,
                                                    other.position)
+
+def evaluate_method(cluster_iter, df, formula, coef, model_fn, n_real, n_fake,
+        alpha=0.01):
+    clusters = model_clusters(clust_iter, df, formula, "asthma",
+            model_fn=gee_cluster)
+
+    ntrue = 0
+    for i, c in enumerate(clusters):
+        ntrue += c['p'] < alpha
+        if i > n_real: break
+
+    from simulate import simulate_cluster
+    clust_iter_fake = (simulate_cluster(c, w=0) for i, c in enumerate(clust_iter))
+    df[coef] = [1] * (len(df)/2) + [0] * (len(df)/2)
+
+    clusters = model_clusters(clust_iter_fake, df, formula, "asthma",
+            model_fn=gee_cluster)
+
+    nfalse = 0
+    for i, c in enumerate(clusters):
+        nfalse += c['p'] < alpha
+        if i > n_fake: break
+
+    tratio = float(ntrue)/n_real
+    fratio = float(nfalse)/n_fake
+    print "false: {fratio:.3f}({nfalse}/{n_fake}), true: {tratio:.3f}({ntrue}/{n_real})".format(**locals())
+    print nfalse, ntrue
 
 if __name__ == "__main__":
 
@@ -221,17 +249,8 @@ if __name__ == "__main__":
 
     df = pd.read_table('meth.clin.txt')
     df['id'] = df['StudyID']
-
     formula = "methylation ~ asthma + age + gender"
 
-    clusters = model_clusters(clust_iter, df, formula, "asthma",
-            model_fn=bump_cluster)
+    np.random.seed(10)
 
-    for i, c in enumerate(clusters):
-        print fmt.format(**c)
-        if i > 10: break
-
-    #from cruzdb import Genome
-    #g = Genome('sqlite:///hg19.db')
-    #g.annotate((x.split("\t") for x in clusters), ('refGene', 'cpgIslandExt'), feature_strand=True)
-
+    evaluate_method(clust_iter, df, formula, 'asthma', gee_cluster, 5000, 1000)
