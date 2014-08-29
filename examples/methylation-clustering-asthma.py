@@ -94,11 +94,7 @@ def _combine_cluster(formula, methylations, covs, coef, robust=False):
 
 def liptak_cluster(formula, methylations, covs, coef, robust=True):
     r = _combine_cluster(formula, methylations, covs, coef, robust=robust)
-    try:
-        r['p'] = stouffer_liptak(r['p'], r['corr'])
-    except:
-        print r
-        raise
+    r['p'] = stouffer_liptak(r['p'], r['corr'])
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
 
@@ -175,7 +171,7 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
         # sequential monte-carlo.
         if ngt > 5: break
 
-    p = (1.0 + ngt) / (2.0 + isim)
+    p = (1.0 + ngt) / (2.0 + isim) # extra 1 in denom for 0-index
     orig['p'] = p
     orig['coef'], orig['t'] = orig['coef'].mean(), orig['t'].mean()
     return orig
@@ -210,14 +206,13 @@ class Feature(object):
                                                    other.position)
 
 
-def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake,
-        alpha=1e-3):
+def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
 
     from simulate import simulate_cluster
     cluster_iter = clust_iter
 
     clusters = model_clusters(clust_iter, df, formula, coef,
-            model_fn=model_fn)
+                              model_fn=model_fn)
 
     trues = []
     for i, c in enumerate(clusters):
@@ -227,21 +222,23 @@ def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake,
     cluster_iter2 = (simulate_cluster(c, w=0) for c in clust_iter)
     df[coef] = [1] * (len(df)/2) + [0] * (len(df)/2)
     clusters = model_clusters(cluster_iter2, df, formula, coef,
-            model_fn=model_fn)
+                              model_fn=model_fn)
 
     falses = []
     for i, c in enumerate(clusters):
         if i == n_fake: break
         falses.append(c['p'])
 
-    r = dict(method=model_fn.func_name, n_true_tests=n_real,
-            n_fake_tests=n_fake, true=[], false=[])
+    r = dict(method=model_fn.func_name, n_real_tests=n_real,
+             n_fake_tests=n_fake, formula=formula)
+
+    # find number less than each alpha
     for e in range(8):
         v = 10**-e
-
-        r['true'].append(sum(t < v for t in trues))
-        r['false'].append(sum(f < v for f in falses))
+        r['true_%i' % e] = sum(t <= v for t in trues)
+        r['false_%i' % e] = sum(f <= v for f in falses)
     return r
+
 if __name__ == "__main__":
 
     def feature_gen(fname):
@@ -262,6 +259,22 @@ if __name__ == "__main__":
     formula = "methylation ~ asthma + age + gender"
 
     np.random.seed(10)
+    ntrue, nfalse = 10, 10
 
-    print evaluate_method(clust_iter, df, formula, 'asthma', liptak_cluster,
-            500, 500)
+    results = []
+    for fn in (bump_cluster, liptak_cluster, zscore_cluster):
+        results.append(evaluate_method(clust_iter, df, formula, 'asthma', fn,
+            ntrue, nfalse))
+
+    formula = "methylation ~ asthma + age + gender"
+    for fn in (gee_cluster, mixed_model_cluster):
+        results.append(evaluate_method(clust_iter, df, formula, 'asthma', fn,
+            ntrue, nfalse))
+
+    results = pd.DataFrame(results)
+    print pd.melt(results,
+            id_vars=[c for c in results.columns if not ('false' in c or 'true' in c)],
+            value_vars=[c for c in results.columns if 'false' in c or 'true' in
+                c], value_name='n_lt_alpha')
+
+
