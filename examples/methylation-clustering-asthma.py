@@ -128,7 +128,7 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
 
 # function for comparing with bump_cluster
 # takes the return value of _combine_cluster and returns a single numeric value
-def coef_sum(c, cutoff=0.025):
+def coef_sum(c, cutoff=0.03):
     coefs = c['coef']
     return sum(min(0, c + cutoff) if c < 0 else max(0, c - cutoff) for c in coefs)
 
@@ -209,34 +209,39 @@ class Feature(object):
         return cmp(self.chrom, other.chrom) or cmp(self.position,
                                                    other.position)
 
-def evaluate_method(cluster_iter, df, formula, coef, model_fn, n_real, n_fake,
-        alpha=0.01):
+
+def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake,
+        alpha=1e-3):
 
     from simulate import simulate_cluster
-
+    cluster_iter = clust_iter
 
     clusters = model_clusters(clust_iter, df, formula, coef,
             model_fn=model_fn)
 
-    ntrue = 0
+    trues = []
     for i, c in enumerate(clusters):
-        ntrue += c['p'] < alpha
-        if i > n_real: break
+        if i == n_real: break
+        trues.append(c['p'])
 
-    cluster_iter2 = (simulate_cluster(c, w=0) for c in cluster_iter)
+    cluster_iter2 = (simulate_cluster(c, w=0) for c in clust_iter)
     df[coef] = [1] * (len(df)/2) + [0] * (len(df)/2)
     clusters = model_clusters(cluster_iter2, df, formula, coef,
             model_fn=model_fn)
 
-    nfalse = 0
+    falses = []
     for i, c in enumerate(clusters):
-        nfalse += c['p'] < alpha
-        if i > n_fake: break
+        if i == n_fake: break
+        falses.append(c['p'])
 
-    tratio = float(ntrue)/n_real
-    fratio = float(nfalse)/n_fake
-    print "{model_fn.func_name} | false: {fratio:.3f}({nfalse}/{n_fake}), true: {tratio:.3f}({ntrue}/{n_real})".format(**locals())
+    r = dict(method=model_fn.func_name, n_true_tests=n_real,
+            n_fake_tests=n_fake, true=[], false=[])
+    for e in range(8):
+        v = 10**-e
 
+        r['true'].append(sum(t < v for t in trues))
+        r['false'].append(sum(f < v for f in falses))
+    return r
 if __name__ == "__main__":
 
     def feature_gen(fname):
@@ -258,4 +263,5 @@ if __name__ == "__main__":
 
     np.random.seed(10)
 
-    evaluate_method(clust_iter, df, formula, 'asthma', bump_cluster, 1000, 1000)
+    print evaluate_method(clust_iter, df, formula, 'asthma', liptak_cluster,
+            500, 500)
