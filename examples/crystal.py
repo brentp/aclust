@@ -199,7 +199,7 @@ class Feature(object):
         return rho > 0.7
 
     def __repr__(self):
-        return str((self.position, self.values))
+        return "Feature({spos})".format(spos=self.spos)
 
     def __cmp__(self, other):
         return cmp(self.chrom, other.chrom) or cmp(self.position,
