@@ -78,7 +78,7 @@ def stouffer_liptak(pvals, sigma):
     Cp = qvals.sum() / np.sqrt(len(qvals))
     return norm.sf(Cp)
 
-def _combine_cluster(formula, methylations, covs, coef, robust=True):
+def _combine_cluster(formula, methylations, covs, coef, robust=False):
     """function called by z-score and liptak to get pvalues"""
     res = [(RLM if robust else GLS).from_formula(formula, covs).fit()
         for methylation in methylations]
@@ -92,13 +92,17 @@ def _combine_cluster(formula, methylations, covs, coef, robust=True):
                 p=pvals,
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
-def liptak_cluster(formula, methylations, covs, coef, robust=False):
+def liptak_cluster(formula, methylations, covs, coef, robust=True):
     r = _combine_cluster(formula, methylations, covs, coef, robust=robust)
-    r['p'] = stouffer_liptak(r['p'], r['corr'])
+    try:
+        r['p'] = stouffer_liptak(r['p'], r['corr'])
+    except:
+        print r
+        raise
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
     return r
 
-def zscore_cluster(formula, methylations, covs, coef):
+def zscore_cluster(formula, methylations, covs, coef, robust=False):
     r = _combine_cluster(formula, methylations, covs, coef)
     z, L = np.mean(norm.isf(r['p'])), len(r['p'])
     sz = 1.0 / L * np.sqrt(L + 2 * np.tril(r['corr'], k=-1).sum())
@@ -178,7 +182,7 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
 
 
 def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in starmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
+    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
                     for cluster in clust_iter)):
         yield r
 
@@ -207,20 +211,22 @@ class Feature(object):
 
 def evaluate_method(cluster_iter, df, formula, coef, model_fn, n_real, n_fake,
         alpha=0.01):
-    clusters = model_clusters(clust_iter, df, formula, "asthma",
-            model_fn=gee_cluster)
+
+    from simulate import simulate_cluster
+
+
+    clusters = model_clusters(clust_iter, df, formula, coef,
+            model_fn=model_fn)
 
     ntrue = 0
     for i, c in enumerate(clusters):
         ntrue += c['p'] < alpha
         if i > n_real: break
 
-    from simulate import simulate_cluster
-    clust_iter_fake = (simulate_cluster(c, w=0) for i, c in enumerate(clust_iter))
+    cluster_iter2 = (simulate_cluster(c, w=0) for c in cluster_iter)
     df[coef] = [1] * (len(df)/2) + [0] * (len(df)/2)
-
-    clusters = model_clusters(clust_iter_fake, df, formula, "asthma",
-            model_fn=gee_cluster)
+    clusters = model_clusters(cluster_iter2, df, formula, coef,
+            model_fn=model_fn)
 
     nfalse = 0
     for i, c in enumerate(clusters):
@@ -229,8 +235,7 @@ def evaluate_method(cluster_iter, df, formula, coef, model_fn, n_real, n_fake,
 
     tratio = float(ntrue)/n_real
     fratio = float(nfalse)/n_fake
-    print "false: {fratio:.3f}({nfalse}/{n_fake}), true: {tratio:.3f}({ntrue}/{n_real})".format(**locals())
-    print nfalse, ntrue
+    print "{model_fn.func_name} | false: {fratio:.3f}({nfalse}/{n_fake}), true: {tratio:.3f}({ntrue}/{n_real})".format(**locals())
 
 if __name__ == "__main__":
 
@@ -240,11 +245,11 @@ if __name__ == "__main__":
             chrom, pos = toks[0].split(":")
             yield Feature(chrom, int(pos), map(float, toks[1:]))
 
-    fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{var}"
-    print ts.fmt2header(fmt)
+    #fmt = "{chrom}\t{start}\t{end}\t{n_probes}\t{p:5g}\t{t:.4f}\t{coef:.4f}\t{var}"
+    #print ts.fmt2header(fmt)
 
     clust_iter = (c for c in mclust(feature_gen(sys.argv[1]),
-                                    max_dist=400, max_skip=2) if len(c) > 2)
+                                    max_dist=400, max_skip=1) if len(c) > 2)
 
 
     df = pd.read_table('meth.clin.txt')
@@ -253,4 +258,4 @@ if __name__ == "__main__":
 
     np.random.seed(10)
 
-    evaluate_method(clust_iter, df, formula, 'asthma', gee_cluster, 5000, 1000)
+    evaluate_method(clust_iter, df, formula, 'asthma', bump_cluster, 1000, 1000)
