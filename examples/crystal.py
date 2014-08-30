@@ -124,7 +124,7 @@ def wrapper(model_fn, model_str, cluster, clin_df, coef):
 
 # function for comparing with bump_cluster
 # takes the return value of _combine_cluster and returns a single numeric value
-def coef_sum(c, cutoff=0.03):
+def coef_sum(c, cutoff=0.015):
     coefs = c['coef']
     return sum(min(0, c + cutoff) if c < 0 else max(0, c - cutoff) for c in coefs)
 
@@ -209,7 +209,9 @@ class Feature(object):
 def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
 
     from simulate import simulate_cluster
+    import time
     cluster_iter = clust_iter
+    t = time.time()
 
     clusters = model_clusters(clust_iter, df, formula, coef,
                               model_fn=model_fn)
@@ -230,7 +232,7 @@ def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
         falses.append(c['p'])
 
     r = dict(method=model_fn.func_name, n_real_tests=n_real,
-             n_fake_tests=n_fake, formula=formula)
+             n_fake_tests=n_fake, formula=formula, time=time.time() - t)
 
     # find number less than each alpha
     for e in range(8):
