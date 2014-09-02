@@ -110,7 +110,7 @@ def zscore_cluster(formula, methylations, covs, coef, robust=False):
 def wrapper(model_fn, model_str, cluster, clin_df, coef):
     """wrap the user-defined functions to return everything we expect and
     to call just GLS when there is a single probe."""
-    t = time()
+    t = time.time()
     if len(cluster) > 1:
         r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
     else:
@@ -231,8 +231,8 @@ def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
 
     falses = []
     for i, c in enumerate(clusters):
-        tot_time += c['time']
         if i == n_fake: break
+        tot_time += c['time']
         falses.append(c['p'])
 
     r = dict(method=model_fn.func_name, n_real_tests=n_real,
