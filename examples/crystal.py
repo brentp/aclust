@@ -16,6 +16,7 @@ import sys
 from aclust import mclust
 import toolshed as ts
 from itertools import starmap, izip
+import time
 
 import pandas as pd
 import numpy as np
@@ -109,10 +110,12 @@ def zscore_cluster(formula, methylations, covs, coef, robust=False):
 def wrapper(model_fn, model_str, cluster, clin_df, coef):
     """wrap the user-defined functions to return everything we expect and
     to call just GLS when there is a single probe."""
+    t = time()
     if len(cluster) > 1:
         r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
     else:
         r = one_cluster(model_str, cluster[0].values, clin_df, coef)
+    r['time'] = time.time() - t
     r['chrom'] = cluster[0].chrom
     r['start'] = cluster[0].position
     r['end'] = cluster[-1].position
@@ -209,16 +212,16 @@ class Feature(object):
 def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
 
     from simulate import simulate_cluster
-    import time
     cluster_iter = clust_iter
-    t = time.time()
 
     clusters = model_clusters(clust_iter, df, formula, coef,
                               model_fn=model_fn)
 
     trues = []
+    tot_time = 0
     for i, c in enumerate(clusters):
         if i == n_real: break
+        tot_time += c['time']
         trues.append(c['p'])
 
     cluster_iter2 = (simulate_cluster(c, w=0) for c in clust_iter)
@@ -228,11 +231,12 @@ def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
 
     falses = []
     for i, c in enumerate(clusters):
+        tot_time += c['time']
         if i == n_fake: break
         falses.append(c['p'])
 
     r = dict(method=model_fn.func_name, n_real_tests=n_real,
-             n_fake_tests=n_fake, formula=formula, time=time.time() - t)
+             n_fake_tests=n_fake, formula=formula, time=tot_time)
 
     # find number less than each alpha
     for e in range(8):
