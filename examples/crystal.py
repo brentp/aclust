@@ -74,7 +74,14 @@ def get_ptc(fit, coef):
 
 def stouffer_liptak(pvals, sigma):
     qvals = norm.isf(pvals).reshape(len(pvals), 1)
-    C = np.asmatrix(chol(sigma)).I
+    try:
+        C = np.asmatrix(chol(sigma)).I
+    except np.linalg.linalg.LinAlgError:
+          # for non positive definite matrix default to z-score correction.
+          z, L = np.mean(norm.isf(pvals)), len(pvals)
+          sz = 1.0 / L * np.sqrt(L + 2 * np.tril(sigma, k=-1).sum())
+          return norm.sf(z/sz)
+
     qvals = C * qvals
     Cp = qvals.sum() / np.sqrt(len(qvals))
     return norm.sf(Cp)
@@ -93,10 +100,14 @@ def _combine_cluster(formula, methylations, covs, coef, robust=False):
                 p=pvals,
                 corr=np.abs(ss.spearmanr(methylations.T)[0]))
 
+def bayes_cluster():
+    pass
+
 def liptak_cluster(formula, methylations, covs, coef, robust=True):
     r = _combine_cluster(formula, methylations, covs, coef, robust=robust)
     r['p'] = stouffer_liptak(r['p'], r['corr'])
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
+    r.pop('corr')
     return r
 
 def zscore_cluster(formula, methylations, covs, coef, robust=False):
@@ -105,14 +116,16 @@ def zscore_cluster(formula, methylations, covs, coef, robust=False):
     sz = 1.0 / L * np.sqrt(L + 2 * np.tril(r['corr'], k=-1).sum())
     r['p'] = norm.sf(z/sz)
     r['t'], r['coef'] = r['t'].mean(), r['coef'].mean()
+    r.pop('corr')
     return r
 
-def wrapper(model_fn, model_str, cluster, clin_df, coef):
+def wrapper(model_fn, model_str, cluster, clin_df, coef, kwargs):
     """wrap the user-defined functions to return everything we expect and
     to call just GLS when there is a single probe."""
     t = time.time()
     if len(cluster) > 1:
-        r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df, coef)
+        r = model_fn(model_str, np.array([c.values for c in cluster]), clin_df,
+                coef, **kwargs)
     else:
         r = one_cluster(model_str, cluster[0].values, clin_df, coef)
     r['time'] = time.time() - t
@@ -180,9 +193,10 @@ def bump_cluster(model_str, methylations, covs, coef, nsims=1000,
     return orig
 
 
-def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster):
-    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef)
-                    for cluster in clust_iter)):
+def model_clusters(clust_iter, clin_df, model_str, coef, model_fn=gee_cluster,
+        n_cpu=None, **kwargs):
+    for r in ts.pmap(wrapper, ((model_fn, model_str, cluster, clin_df, coef,
+                                kwargs) for cluster in clust_iter), n_cpu):
         yield r
 
 
@@ -209,13 +223,14 @@ class Feature(object):
                                                    other.position)
 
 
-def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake):
+def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake,
+        **kwargs):
 
     from simulate import simulate_cluster
     cluster_iter = clust_iter
 
     clusters = model_clusters(clust_iter, df, formula, coef,
-                              model_fn=model_fn)
+                              model_fn=model_fn, **kwargs)
 
     trues = []
     tot_time = 0
