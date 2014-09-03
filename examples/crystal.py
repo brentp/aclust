@@ -258,6 +258,7 @@ def evaluate_method(clust_iter, df, formula, coef, model_fn, n_real, n_fake,
         v = 10**-e
         r['true_%i' % e] = sum(t <= v for t in trues)
         r['false_%i' % e] = sum(f <= v for f in falses)
+    r['null-ps'] = falses # to get sense of distributions
     return r
 
 if __name__ == "__main__":
