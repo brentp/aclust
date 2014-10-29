@@ -2,6 +2,8 @@ Aclust
 ======
 Streaming agglomerative clustering with custom distance and correlation
 
+![ci](https://codeship.io/projects/039f95d0-413e-0132-8b16-3ae7a01b01d4/status?branch=master)
+
 
 *Agglomerative clustering* is a very simple algorithm.
 The function `aclust` provided here is an attempt at a simple implementation
