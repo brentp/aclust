@@ -32,6 +32,11 @@ def _get_linkage_function(linkage):
     False
     >>> fi([True, True, True]) and fi([True] * 10)
     True
+
+    >>> _get_linkage_function('complete') == all == _get_linkage_function(1.0)
+    True
+    >>> _get_linkage_function(1) == any
+    True
     """
     if linkage == 'single':
         return any
@@ -59,7 +64,6 @@ def _get_linkage_function(linkage):
             v = list(bools)
             return sum(v) >= min(len(v), n)
         return i_linkage
-    1/0
 
 def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
     r"""
@@ -131,7 +135,7 @@ def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
 
     # add a feature that's not correlated with the others.
     >>> for c in (aclust(feats + [Feature(2, range(5)[::-1])], max_dist=1)):
-    ...     print c
+    ...     print(c)
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
     [(2, [4, 3, 2, 1, 0])]
 
@@ -141,7 +145,7 @@ def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
     ...                 [Feature( 2, range(5)[::-1])],
     ...                  max_dist=1, max_skip=4):
     ...     if len(c) > 1:
-    ...         print c
+    ...         print(c)
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
 
     # with maximum dist set high as well...
@@ -149,7 +153,7 @@ def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
     ...                 [Feature( 2, range(5)[::-1])],
     ...                  max_dist=4, max_skip=4):
     ...     if len(c) > 1:
-    ...         print c
+    ...         print(c)
     [(-1, [4, 3, 2, 1, 0]), (2, [4, 3, 2, 1, 0])]
     [(0, [0, 1, 2, 3, 4]), (1, [0, 1, 2, 3, 4])]
     """
@@ -158,7 +162,7 @@ def aclust(objs, max_dist, max_skip=0, linkage='single', multi_member=False):
 
     objs = iter(objs)
     # accumulate clusters here.
-    clusters = [[objs.next()]]
+    clusters = [[next(objs)]]
 
     for obj in objs:
 
@@ -256,4 +260,4 @@ def test():
 
 if __name__ == "__main__":
     import doctest
-    print doctest.testmod()
+    print(doctest.testmod())
